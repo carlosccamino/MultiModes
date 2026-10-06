@@ -167,7 +167,7 @@ def box_noise_estimate(time, flux, best_freq, ampmax, indmpow, osr=10):
     minph = 0
     maxph = 1
     bounds = ([minamp, minfreq, minph, -np.inf], [maxamp, maxfreq, maxph, np.inf])
-    params,_ = curve_fit(sinusoid, time, flux, p0=initial_guess, bounds=bounds)
+    params,_ = curve_fit(sinusoid, time, flux, p0=initial_guess, bounds=bounds, max_nfev=100*4*20)
     y_fit = sinusoid(time, *params)
     res_fit = y_fit - flux
 
@@ -251,8 +251,8 @@ def lightcurve(file, isfits, isascii, timecol, fluxcol, header_lines):
         hdul = fits.open(file)
         data = hdul[1].data
         data = pd.DataFrame(np.array(data))
-        time = np.array( data.iloc[:,timecol-1] )     # extract times
-        fluxes = np.array( data.iloc[:,fluxcol-1] )   # extract fluxes
+        time = np.array( data.iloc[:,timecol-1], dtype=np.float64 )     # extract times
+        fluxes = np.array( data.iloc[:,fluxcol-1], dtype=np.float64 )   # extract fluxes
     elif isascii:
         data = np.loadtxt(file, skiprows=header_lines)
         time = data[:,timecol-1]     # extract times
