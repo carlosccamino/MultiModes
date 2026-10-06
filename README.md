@@ -14,7 +14,7 @@ With every light curve, the code calculates the frequencies spectrum, or periodo
 Multimodes make use of [astropy](https://www.astropy.org) for the calculation of the periodograms and [lmfit](https://lmfit.github.io/lmfit-py/) for the non-linear and simultaneous fitting of the extracted signals, using the non-linear least squares method for python.
 
 ## Citations
-If MultiModes2 is used, please, cite the author this way: Pamos Ortega, D. et al. 2022 (https://doi.org/10.1093/mnras/stac864)
+If MultiModes2 is used, please, cite the authors this way: Pamos Ortega, D. et al. 2022 (https://doi.org/10.1093/mnras/stac864)
 
 ## Requirements
 Python >=3.8 with the following modules installed:
@@ -44,10 +44,8 @@ Python >=3.8 with the following modules installed:
 - max_iter (default is 1000): maximum number of iterations
 - header_lines (default is 1): skip xx header lines
 - clean_close (0 by default): remove the less significant frequencies that are closer than Rayleigh (i.e. might be spurious). This might be useful only when osratio>1.
+- noise_method ('hf' by default): allows to choose the method to estimate the noise level. Three options are possible: 'hf' is based on the mean amplitude in the range of highest frequencies (where no signal is expected). 'g' is based on the median amplitude along the whole spectrum, and 'box' is based on the median of the background inside a box centered around the peak of maximum amplitude.
 
-Note: In clean_close only final results are cleaned and not intermediate files. Yake into account that the Rayleigh frequency is a limit to detect separate frequencies in the periodogram due to the leakage but this is different for a non-linear least squares in time, where the full information (not only the amplitudes) is used for the fitting and much closer frequencies can be fitted. Therefore, frequencies that are closer than Rayleigh in the final solution are not necessarily spurious and clean_close should be use with care, especially, if osratio is 1.
-
-  
 ## Output
 - Directory 'results', containing subdirectories corresponding to every analysed light curve. Each subdirectory contains:
   - file best_modes.dat with 8 columns containing the values of the most significant frequencies, amplitudes, phases, the corresponding errors, SNR/FAP and the rms
@@ -74,9 +72,13 @@ Since v0.1.1 MultiModes2 can be also imported from a Jupyter Notebook. For examp
 
 ```
 >>> import MultiModes2 as mm2
->>> args = mm2.arguments(['--file', 'example.txt'])
+>>> args = mm2.arguments(['--file', 'example.txt']
 >>> mm2.multimodes(args)
 ```
 
 The output, though, will not appear in the notebook yet.
 
+## Notes
+1) In clean_close only final results are cleaned and not intermediate files. Yake into account that the Rayleigh frequency is a limit to detect separate frequencies in the periodogram due to the leakage but this is different for a non-linear least squares in time, where the full information (not only the amplitudes) is used for the fitting and much closer frequencies can be fitted. Therefore, frequencies that are closer than Rayleigh in the final solution are not necessarily spurious and clean_close should be use with care, especially, if osratio is 1.
+
+2) The results of frequency analyses are very dependent on the parameters used but, especially, the method used to estimate the noise level is very determining. Use the 'noise_method' parameter wisely.
