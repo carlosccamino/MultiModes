@@ -5,6 +5,8 @@ v0.1.4
 - FEATURE: Noise estimation method can be selected between: hf (default), here near-Nyquist frequency bins are averaged; g, global noise estimate using the median of the whole periodogram; box, box noise estimate (default) using a box around the trial frequency in the periodogram.
 - FEATURE: periodograms are calculated now using the nifty module, which is at least 4 times faster and can be even 100 faster.
 - FEATURE: estimation of the noise spectrum through a median filter.
+- BUGFIX: recasted time and flux types to float64 to avoid incompatibility in ls.autopower
+- BUGFIX: increased the number of iterations in curve_fit with parameter max_nfev to achieve convergence. 
 - Other minor fixes and improvements. 
  
 v0.1.3
