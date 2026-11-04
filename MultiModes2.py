@@ -662,7 +662,7 @@ def fit_resolved_candidate(params, time, flux, R, fixed_freqs, new_n):
         cost = float(np.sum(np.asarray(res2.residual, dtype=float)**2))
         if not np.isfinite(cost):
             continue
-        
+
         resolved = _check_resolved(
             fitted_freqs,
             fixed_freqs,
@@ -965,7 +965,7 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
                 'No input file was provided to the worker process.'
             )
     
-        pth = './' + args.d + '/'
+        pth = os.path.abspath(os.path.expanduser(args.d))
     
         # The worker receives one concrete light-curve file.
         filepath = [multipro_input]
@@ -995,45 +995,45 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
     
     elif args.d:
     
-        pth = './' + args.d + '/'
-    
-        fits_files = [
-            f for f in glob.glob(pth + '*.fits')
-        ]
+        pth = os.path.abspath(os.path.expanduser(args.d))
+
+        fits_files = sorted(
+            glob.glob(os.path.join(pth, '*.fits'))
+        )
+
+        ascii_files = sorted(
+            glob.glob(os.path.join(pth, '*.dat'))
+        )
     
         ascii_files = [
             f for f in glob.glob(pth + '*.dat')
         ]
     
         if len(ascii_files) == 0:
-            ascii_files = [
-                f for f in glob.glob(pth + '*.txt')
-            ]
+            ascii_files = sorted(
+                glob.glob(os.path.join(pth, '*.txt'))
+            )
     
         if len(ascii_files) == 0:
         
             if len(fits_files) == 0:
-                print("No input files found.")
+                raise FileNotFoundError(
+                    "No input files found in "+ pth
+                )
     
-            fname = [
-                os.path.splitext(f)[0]
-                for f in fits_files
-            ]
-    
-            fits_files = sorted(fits_files)
             filepath = fits_files
             isfits = True
     
         else:
-        
-            fname = [
-                os.path.splitext(f)[0]
-                for f in ascii_files
-            ]
-    
-            ascii_files = sorted(ascii_files)
+
             filepath = ascii_files
             isascii = True
+
+        # Extracting file names after sorting the input paths.
+        fname = [
+            os.path.splitext(f)[0]
+            for f in filepath
+        ]
     
     else:
     
@@ -1141,6 +1141,83 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
         N = data[3]
         R = data[4]
 
+        # ==============================================================
+        # DEFINE OUTPUT PATH
+        # ==============================================================
+
+        if args.d:
+        
+            # Get the input directory name independently of the path format.
+            input_dir_name = os.path.basename(
+                os.path.normpath(
+                    os.path.abspath(os.path.expanduser(args.d))
+                )
+            )
+
+            # Create the main output directory.
+            if os.path.isfile(paramname):
+            
+                parameter_name = os.path.splitext(
+                    os.path.basename(paramname)
+                )[0]
+
+                ofolder = os.path.join(
+                    './results',
+                    input_dir_name + '+' + parameter_name
+                )
+
+            else:
+            
+                ofolder = os.path.join(
+                    './results',
+                    input_dir_name
+                )
+
+            # Each light curve gets its own output directory.
+            if args.multiprocessing:
+            
+                # nm is relative to the input directory in multiprocessing.
+                newpath = os.path.join(
+                    ofolder,
+                    nm,
+                    ''
+                )
+
+            else:
+            
+                # nm contains the full input path in sequential mode.
+                # Only the light-curve filename is used for the output folder.
+                newpath = os.path.join(
+                    ofolder,
+                    os.path.basename(nm),
+                    ''
+                )
+
+        else:
+        
+            # Preserve the original behaviour when using --file.
+            if os.path.isfile(paramname):
+            
+                ofolder = (
+                    './results/+'
+                    + paramname[:-4]
+                    + '/'
+                )
+
+                newpath = (
+                    ofolder
+                    + nm
+                    + '/'
+                )
+
+            else:
+            
+                newpath = (
+                    './results/'
+                    + nm
+                    + '/'
+                )    
+        """    
         # Define the path for the output
         if os.path.isfile(paramname):
         
@@ -1205,6 +1282,7 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
                     + nm
                     + '/'
                 )
+        """
 
         if not os.path.exists(newpath):
             os.makedirs(newpath)
@@ -2066,26 +2144,30 @@ if __name__ == "__main__":
         # Recursive search for input light curves.
         # ----------------------------------------------------------
 
+        # Absolute input directory, supporting relative, absolute and home paths.
+        input_dir = os.path.abspath(
+            os.path.expanduser(args.d)
+        )
+
+        # Recursive search for input light curves.
         lc_files = glob.glob(
-            './' + args.d + '/**/*.fits',
+            os.path.join(input_dir, '**', '*.fits'),
             recursive=True
         )
 
         if not lc_files:
-
+        
             lc_files = glob.glob(
-                './' + args.d + '/**/*.dat',
+                os.path.join(input_dir, '**', '*.dat'),
                 recursive=True
             )
 
         if not lc_files:
-
+        
             lc_files = glob.glob(
-                './' + args.d + '/**/*.txt',
+                os.path.join(input_dir, '**', '*.txt'),
                 recursive=True
             )
-
-        lc_files = sorted(lc_files)
 
         if not lc_files:
 
