@@ -1034,47 +1034,48 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
             os.path.splitext(f)[0]
             for f in filepath
         ]
-    
     else:
-    
+
         if not args.file:
             raise ValueError(
                 'Either --d or --file must be provided.'
             )
-    
-        pth = './'
-    
-        fname = list(
-            os.path.splitext(args.file)
+
+        # Expand home directory and resolve relative paths.
+        input_file = os.path.abspath(
+            os.path.expanduser(args.file)
         )
-    
-        if fname[1] == '.fits':
-        
-            fits_files = [
-                './' + args.file
-            ]
-    
-            filepath = fits_files
+
+        # Check that the input file exists.
+        if not os.path.isfile(input_file):
+            raise FileNotFoundError(
+                f'Input file not found: {input_file}'
+            )
+
+        # Identify the input file format.
+        extension = os.path.splitext(input_file)[1].lower()
+
+        if extension == '.fits':
+
+            filepath = [input_file]
             isfits = True
-    
-        elif (
-            fname[1] == '.dat'
-            or fname[1] == '.txt'
-        ):
-    
-            ascii_files = [
-                './' + args.file
-            ]
-    
-            filepath = ascii_files
+
+        elif extension in ('.dat', '.txt'):
+
+            filepath = [input_file]
             isascii = True
-    
+
         else:
+
             raise ValueError(
                 'Input file must have .fits, .dat or .txt extension.'
             )
-    
-        fname = [fname[0]]
+
+        # Use only the file name, without its extension,
+        # to construct the output directory.
+        fname = [
+            os.path.splitext(os.path.basename(input_file))[0]
+        ]
 
     # Starting with the iterative analysis
     columns = [
@@ -1195,28 +1196,39 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
 
         else:
         
-            # Preserve the original behaviour when using --file.
+            # ==============================================================
+            # SINGLE FILE OUTPUT PATH
+            # ==============================================================
+
+            # Get the light-curve filename without its extension.
+            lightcurve_name = os.path.basename(nm)
+
             if os.path.isfile(paramname):
             
-                ofolder = (
-                    './results/+'
-                    + paramname[:-4]
-                    + '/'
+                # Get parameter file name independently of its path.
+                parameter_name = os.path.splitext(
+                    os.path.basename(paramname)
+                )[0]
+
+                # Main output directory.
+                ofolder = os.path.join(
+                    './results',
+                    '+' + parameter_name
                 )
 
-                newpath = (
-                    ofolder
-                    + nm
-                    + '/'
+                newpath = os.path.join(
+                    ofolder,
+                    lightcurve_name,
+                    ''
                 )
 
             else:
             
-                newpath = (
-                    './results/'
-                    + nm
-                    + '/'
-                )    
+                newpath = os.path.join(
+                    './results',
+                    lightcurve_name,
+                    ''
+                )
         """    
         # Define the path for the output
         if os.path.isfile(paramname):
