@@ -227,7 +227,7 @@ def box_noise_estimate(time, flux, best_freq, ampmax, indmpow, frequency, osr=10
         flux,
         p0=initial_guess,
         bounds=bounds,
-        max_nfev=100000
+        max_nfev=1000
     )
 
     y_fit = sinusoid(time, *params)
@@ -545,153 +545,42 @@ def _check_resolved(fitted_freqs, fixed_freqs, R):
 
 def fit_resolved_candidate(params, time, flux, R, fixed_freqs, new_n):
     '''
-    Perform a robust two-stage nonlinear least-squares fit.
-
-    Stage 1 fits only the newly added component while the already fitted
-    components remain fixed. Stage 2 releases all parameters and performs
-    the full simultaneous fit.
-
-    Several deterministic starting points are tried because a high-order
-    multisine fit can otherwise fail simply because the optimizer starts in
-    an unfavourable local basin.
-
-    The candidate is accepted only when the final fitted frequencies are
-    mutually separated by at least the Rayleigh resolution R and are also
-    separated from frequencies accepted in previous blocks.
+    Perform one simultaneous nonlinear least-squares fit,
+    following the original MultiModes v0.1.4 approach.
     '''
 
-    new_amp_name = 'p_' + str(new_n) + 'a'
-    new_freq_name = 'p_' + str(new_n) + 'b'
-    new_ph_name = 'p_' + str(new_n) + 'c'
+    # Single simultaneous nonlinear least-squares fit.
+    res = minimize(
+        residual,
+        params.copy(),
+        args=(time, flux),
+        method='least_squares'
+    )
 
-    base_freq = params[new_freq_name].value
-    base_phase = params[new_ph_name].value
+    if not res.success:
+        return False, None, None
 
-    freq_min = params[new_freq_name].min
-    freq_max = params[new_freq_name].max
-    ph_min = params[new_ph_name].min
-    ph_max = params[new_ph_name].max
+    if not np.all(np.isfinite(res.residual)):
+        return False, None, None
 
-    # Deterministic multi-start seeds. The LS maximum remains the primary
-    # starting point; additional seeds only help the optimizer escape a bad
-    # local basin without introducing random behaviour.
-    seeds = [
-        (base_freq, base_phase),
-        (np.clip(base_freq - R/4, freq_min, freq_max), base_phase),
-        (np.clip(base_freq + R/4, freq_min, freq_max), base_phase),
-        (base_freq, np.clip(base_phase + 0.5, ph_min, ph_max)),
-        (base_freq, np.clip(base_phase - 0.5, ph_min, ph_max)),
-    ]
+    fitted_params = res.params
 
-    best_resolved = None
-    best_resolved_params = None
-    best_resolved_cost = np.inf
+    fitted_freqs = np.asarray(
+        fit(time, fitted_params)[2],
+        dtype=float
+    )
 
-    best_unresolved = None
-    best_unresolved_params = None
-    best_unresolved_cost = np.inf
+    if not np.all(np.isfinite(fitted_freqs)):
+        return False, None, None
 
-    for seed_freq, seed_phase in seeds:
+    # Check Rayleigh resolution after the simultaneous fit.
+    resolved = _check_resolved(
+        fitted_freqs,
+        fixed_freqs,
+        R
+    )
 
-        trial_params = params.copy()
-        trial_params[new_freq_name].value = seed_freq
-        trial_params[new_ph_name].value = seed_phase
-
-        # ----------------------------------------------------------
-        # Stage 1: fit only the new component.
-        # ----------------------------------------------------------
-        for name in trial_params:
-            if name in {
-                new_amp_name,
-                new_freq_name,
-                new_ph_name
-            }:
-                trial_params[name].vary = True
-
-            elif new_n == 1 and name == 'p_m':
-                trial_params[name].vary = True
-
-            else:
-                trial_params[name].vary = False
-
-        res1 = minimize(
-            residual,
-            trial_params,
-            args=(time, flux),
-            method='least_squares',
-            x_scale='jac',
-            max_nfev=100000
-        )
-
-        if not res1.success:
-            continue
-
-        # ----------------------------------------------------------
-        # Stage 2: release the complete simultaneous model.
-        # ----------------------------------------------------------
-        trial_params = res1.params.copy()
-
-        for name in trial_params:
-            trial_params[name].vary = True
-
-        res2 = minimize(
-            residual,
-            trial_params,
-            args=(time, flux),
-            method='least_squares',
-            x_scale='jac',
-            max_nfev=100000
-        )
-
-        if not res2.success:
-            continue
-
-        # Reject solutions with non-finite residuals.
-        if not np.all(np.isfinite(res2.residual)):
-            continue
-
-        fitted_params = res2.params
-        fitted_freqs = np.asarray(
-            fit(time, fitted_params)[2],
-            dtype=float
-        )
-
-        if not np.all(np.isfinite(fitted_freqs)):
-            continue
-
-        cost = float(np.sum(np.asarray(res2.residual, dtype=float)**2))
-        if not np.isfinite(cost):
-            continue
-
-        resolved = _check_resolved(
-            fitted_freqs,
-            fixed_freqs,
-            R
-        )
-
-        if resolved:
-            if cost < best_resolved_cost:
-                best_resolved = res2
-                best_resolved_params = fitted_params
-                best_resolved_cost = cost
-
-        else:
-            if cost < best_unresolved_cost:
-                best_unresolved = res2
-                best_unresolved_params = fitted_params
-                best_unresolved_cost = cost
-
-    # Prefer the best converged solution that satisfies the resolution
-    # criterion. If no resolved solution exists but a converged solution does,
-    # return it so that the calling routine can reject the candidate as an
-    # unresolved structure. If nothing converged, signal a numerical failure.
-    if best_resolved is not None:
-        return True, best_resolved, best_resolved_params
-
-    if best_unresolved is not None:
-        return False, best_unresolved, best_unresolved_params
-
-    return False, None, None
+    return resolved, res, fitted_params
 
 
 def parameter_errors(params, residuals, N):
@@ -1340,6 +1229,7 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
 
         params = Parameters()
         last_ls = None
+        periodogram_cache = None
         sigma_amps = []
         sigma_freqs = []
         sigma_phs = []
@@ -1361,13 +1251,16 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
 
         while n <= sim_fit_n:
 
-            ls = periodogram(
-                time,
-                lc,
-                osratio=osratio,
-                max_freq=max_freq_lc
-            )
+            # Calculate the periodogram only when the residual changes.
+            if periodogram_cache is None:
+                periodogram_cache = periodogram(
+                    time,
+                    lc,
+                    osratio=osratio,
+                    max_freq=max_freq_lc
+                )
 
+            ls = periodogram_cache
             last_ls = ls
 
             frequency = ls[1]
@@ -1562,8 +1455,8 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
 
                             blocked_ranges.append(
                                 (
-                                    freq - 0.5*df_grid,
-                                    freq + 0.5*df_grid
+                                    freq - R/2,
+                                    freq + R/2
                                 )
                             )
 
@@ -1578,7 +1471,8 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
                     params = fitted_params
                     lc = res.residual
 
-                    # The residual has changed after accepting the new frequency.
+                    # The residual has changed after accepting the new frequency, so a new periodogram is required.
+                    periodogram_cache = None
                     # Previously rejected candidates may therefore be reconsidered.
                     blocked_ranges = []
 
@@ -1836,8 +1730,8 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
 
                             blocked_ranges.append(
                                 (
-                                    freq - 0.5*df_grid,
-                                    freq + 0.5*df_grid
+                                    freq - R/2,
+                                    freq + R/2
                                 )
                             )
 
@@ -1852,7 +1746,8 @@ def multimodes(args, multipro_input=None,dash=100*'-'):
                     params = fitted_params
                     lc = res.residual
 
-                    # The residual has changed after accepting the new frequency.
+                    # The residual has changed after accepting the new frequency, so a new periodogram is required.
+                    periodogram_cache = None
                     # Previously rejected candidates may therefore be reconsidered.
                     blocked_ranges = []
 
